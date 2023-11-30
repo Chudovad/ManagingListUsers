@@ -12,7 +12,7 @@ namespace ManagingListUsers
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
-            builder.Services.AddTransient<Seed>();
+            builder.Services.AddTransient<DbInitializer>();
             builder.Services.AddControllers().AddJsonOptions(x =>
                 x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
             builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
@@ -39,8 +39,7 @@ namespace ManagingListUsers
 
             var app = builder.Build();
 
-            if (args.Length == 1 && args[0].ToLower() == "seeddata")
-                SeedData(app);
+            SeedData(app);
             // Configure the HTTP request pipeline.
 
             app.UseHttpsRedirection();
@@ -65,8 +64,8 @@ namespace ManagingListUsers
 
             using (var scope = scopedFactory.CreateScope())
             {
-                var service = scope.ServiceProvider.GetService<Seed>();
-                service.SeedDataContext();
+                var service = scope.ServiceProvider.GetService<DbInitializer>();
+                service.Initialize();
             }
         }
     }
