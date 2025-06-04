@@ -1,4 +1,6 @@
-﻿using ManagingListUsers.Data;
+﻿using System.Threading.Tasks;
+using ManagingListUsers.Data;
+using ManagingListUsers.Dto;
 using ManagingListUsers.Interfaces;
 using ManagingListUsers.Models;
 using Microsoft.EntityFrameworkCore;
@@ -13,94 +15,43 @@ namespace ManagingListUsers.Repository
             _context = context;
         }
 
-        public ICollection<User> GetUserByAge(int age)
+        public async Task<bool> Save()
         {
-            return _context.Users.Where(u => u.Age == age).ToList();
+            var saved = await _context.SaveChangesAsync();
+            return saved > 0;
         }
 
-        public User GetUserByEmail(string email)
+        public async Task<bool> UpdateUserAsync(User userUpdate)
         {
-            return _context.Users.FirstOrDefault(u => u.Email == email);
+            _context.Users.Update(userUpdate);
+            return await Save();
         }
 
-        public User GetUserById(int id)
+        public async Task<bool> UserExistsByIdAsync(int id)
         {
-            return _context.Users.FirstOrDefault(u => u.Id == id);
+            return await _context.Users.AnyAsync(u => u.Id == id);
         }
 
-        public ICollection<User> GetUserByName(string name)
+        public async Task<User> GetUserByIdAsync(int id)
         {
-            return _context.Users.Where(u => u.Name == name).ToList();
+            return await _context.Users.FirstAsync(u => u.Id == id);
         }
 
-        public ICollection<User> GetUsers()
+        public async Task<User> GetUserWithRolesByIdAsync(int userId)
         {
-            return _context.Users.ToList();
+            return await _context.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role).FirstAsync(u => u.Id == userId);
         }
 
-        public ICollection<User> GetUsersOrderById()
+        public async Task<bool> CheckUniqueEmailAsync(string email)
         {
-            return _context.Users.OrderBy(u => u.Id).ToList();
+            var userEmail = await _context.Users.FirstOrDefaultAsync(c => c.Email.Trim().ToUpper() == email.TrimEnd().ToUpper());
+
+            return userEmail == null;
         }
 
-        public ICollection<User> GetUsersOrderByEmail()
+        public async Task<bool> CreateUserAsync(User user, int roleId)
         {
-            return _context.Users.OrderBy(u => u.Email).ToList();
-        }
-
-        public ICollection<User> GetUsersOrderByAge()
-        {
-            return _context.Users.OrderBy(u => u.Age).ToList();
-        }
-
-        public ICollection<User> GetUsersOrderByName()
-        {
-            return _context.Users.OrderBy(u => u.Name).ToList();
-        }
-
-        public ICollection<User> GetUsersOrderByIdDescending()
-        {
-            return _context.Users.OrderByDescending(u => u.Id).ToList();
-        }
-
-        public ICollection<User> GetUsersOrderByNameDescending()
-        {
-            return _context.Users.OrderByDescending(u => u.Name).ToList();
-        }
-
-        public ICollection<User> GetUsersOrderByAgeDescending()
-        {
-            return _context.Users.OrderByDescending(u => u.Age).ToList();
-        }
-
-        public ICollection<User> GetUsersOrderByEmailDescending()
-        {
-            return _context.Users.OrderByDescending(u => u.Email).ToList();
-        }
-
-        public bool UserExistsById(int id)
-        {
-            return _context.Users.Any(u => u.Id == id);
-        }
-
-        public bool UserExistsByEmail(string email)
-        {
-            return _context.Users.Any(u => u.Email == email);
-        }
-
-        public ICollection<User> GetUsersByPagination(int page, int pageSize)
-        {
-            return _context.Users.Skip(page * pageSize).Take(pageSize).ToList();
-        }
-
-        public User GetUserWithRolesById(int userId)
-        {
-            return _context.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role).FirstOrDefault(u => u.Id == userId);
-        }
-
-        public bool CreateUser(User user, int roleId)
-        {
-            var userRoleEntity = _context.Roles.Where(r => r.Id == roleId).FirstOrDefault();
+            var userRoleEntity = await _context.Roles.Where(r => r.Id == roleId).FirstOrDefaultAsync();
             if (userRoleEntity != null)
             {
                 var userRole = new UserRole()
@@ -108,39 +59,20 @@ namespace ManagingListUsers.Repository
                     User = user,
                     RoleId = roleId,
                 };
-                _context.Add(userRole);
                 _context.Add(user);
-                return Save();
+                return await Save();
             }
             return false;
         }
 
-        public bool Save()
+        public async Task<bool> DeleteUserAsync(int id)
         {
-            var saved = _context.SaveChanges();
-            return saved > 0 ? true : false;
-        }
-
-        public bool UpdateUser(User userUpdate)
-        {
-            _context.Users.Update(userUpdate);
-            return Save();
-        }
-
-        public bool CheckUniqueEmail(string email)
-        {
-            var userEmail = _context.Users.FirstOrDefault(c => c.Email.Trim().ToUpper() == email.TrimEnd().ToUpper());
-
-            return userEmail == null;
-        }
-
-        public bool DeleteUser(User user)
-        {
+            var user = await GetUserByIdAsync(id);
             _context.Remove(user);
-            return Save();
+            return await Save();
         }
 
-        public bool AddUserRole(int userId, int roleId)
+        public async Task<bool> AddUserRoleAsync(int userId, int roleId)
         {
             var userRoleEntity = _context.Roles.Where(r => r.Id == roleId).FirstOrDefault();
             if (userRoleEntity != null)
@@ -151,9 +83,16 @@ namespace ManagingListUsers.Repository
                     RoleId = roleId,
                 };
                 _context.Add(userRole);
-                return Save();
+                return await Save();
             }
             return false;
+        }
+
+        public async Task<(ICollection<User> users, int totalCount)> GetUsersPaginatedAsync(int page, int pageSize)
+        {
+            var users = await _context.Users.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+
+            return (users, users.Count);
         }
     }
 }

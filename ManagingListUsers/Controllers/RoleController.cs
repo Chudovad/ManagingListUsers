@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using ManagingListUsers.Dto;
 using ManagingListUsers.Interfaces;
+using ManagingListUsers.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ManagingListUsers.Controllers
@@ -11,140 +12,157 @@ namespace ManagingListUsers.Controllers
     {
         private readonly IRoleRepository _roleRepository;
         private readonly IMapper _mapper;
+        private const int DefaultPageSize = 10;
+        private const int MaxPageSize = 50;
 
         public RoleController(IRoleRepository roleRepository, IMapper mapper)
         {
             _roleRepository = roleRepository;
             _mapper = mapper;
         }
+
         /// <summary>
-        /// Get all roles
+        /// Get all roles with pagination and sorting
         /// </summary>
-        /// <returns></returns>
-        /// <returns>Roles</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
+        /// <param name="page">Page number (default: 1)</param>
+        /// <param name="pageSize">Items per page (default: 10, max: 50)</param>
+        /// <param name="sortBy">Field to sort by (id, name)</param>
+        /// <param name="descending">Sort descending (default: false)</param>
+        /// <returns>Paginated list of roles</returns>
         [HttpGet]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<RoleDto>))]
+        [ProducesResponseType(200, Type = typeof(PaginatedResponse<RoleDto>))]
         [ProducesResponseType(400)]
-        public IActionResult GetRoles()
+        public async Task<IActionResult> GetRoles(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = DefaultPageSize,
+            [FromQuery] string sortBy = "id",
+            [FromQuery] bool descending = false)
         {
-            var users = _mapper.Map<List<RoleDto>>(_roleRepository.GetRoles());
+            if (page < 1 || pageSize < 1 || pageSize > MaxPageSize)
+                return BadRequest("Invalid pagination parameters");
 
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
+            var (roles, totalCount) = await _roleRepository.GetRolesPaginatedAsync(
+                page, pageSize, sortBy, descending);
+
+            var response = new PaginatedResponse<RoleDto>
+            {
+                Data = _mapper.Map<List<RoleDto>>(roles),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
+
+            return Ok(response);
         }
 
         /// <summary>
-        /// Get role by id
+        /// Get role by ID
         /// </summary>
-        /// <returns>Role</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        /// <response code="404">Not found user</response>
-        [HttpGet("Id/{id}")]
+        /// <param name="id">Role ID</param>
+        /// <returns>Role details</returns>
+        [HttpGet("{id}")]
         [ProducesResponseType(200, Type = typeof(RoleDto))]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> GetRoleById(int id)
+        {
+            if (!await _roleRepository.RoleExistsByIdAsync(id))
+                return NotFound();
+
+            var role = await _roleRepository.GetRoleByIdAsync(id);
+            return Ok(_mapper.Map<RoleDto>(role));
+        }
+
+        /// <summary>
+        /// Create new role
+        /// </summary>
+        /// <param name="roleCreate">Role data</param>
+        /// <returns>Created role</returns>
+        [HttpPost]
+        [ProducesResponseType(201, Type = typeof(RoleDto))]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(422)]
+        public async Task<IActionResult> CreateRole([FromBody] RoleDto roleCreate)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            if (await _roleRepository.RoleExistsByNameAsync(roleCreate.RoleName))
+            {
+                ModelState.AddModelError("Name", "Role name already exists");
+                return UnprocessableEntity(ModelState);
+            }
+
+            var role = _mapper.Map<Role>(roleCreate);
+
+            if (!await _roleRepository.CreateRoleAsync(role))
+            {
+                ModelState.AddModelError("", "Failed to create role");
+                return StatusCode(500, ModelState);
+            }
+
+            return CreatedAtAction(nameof(GetRoleById), new { id = role.Id }, _mapper.Map<RoleDto>(role));
+        }
+
+        /// <summary>
+        /// Update role
+        /// </summary>
+        /// <param name="id">Role ID</param>
+        /// <param name="roleUpdate">Updated role data</param>
+        /// <returns>No content</returns>
+        [HttpPut("{id}")]
+        [ProducesResponseType(204)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]
-        public IActionResult GetRoleById(int id)
+        [ProducesResponseType(422)]
+        public async Task<IActionResult> UpdateRole(int id, [FromBody] RoleDto roleUpdate)
         {
-            if (!_roleRepository.RoleExistById(id))
-                return NotFound();
-            var role = _mapper.Map<RoleDto>(_roleRepository.GetRoleById(id));
-
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
-            return Ok(role);
+
+            if (id != roleUpdate.Id)
+                return BadRequest("ID mismatch");
+
+            if (!await _roleRepository.RoleExistsByIdAsync(id))
+                return NotFound();
+
+            if (await _roleRepository.RoleNameExistsForOtherRoleAsync(id, roleUpdate.RoleName))
+            {
+                ModelState.AddModelError("Name", "Role name already exists");
+                return UnprocessableEntity(ModelState);
+            }
+
+            var role = _mapper.Map<Role>(roleUpdate);
+
+            if (!await _roleRepository.UpdateRoleAsync(role))
+            {
+                ModelState.AddModelError("", "Failed to update role");
+                return StatusCode(500, ModelState);
+            }
+
+            return NoContent();
         }
+
         /// <summary>
-        /// Get role by name
+        /// Delete role
         /// </summary>
-        /// <returns>Role</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        /// <response code="404">Not found user</response>
-        [HttpGet("Name/{roleName}")]
-        [ProducesResponseType(200, Type = typeof(RoleDto))]
-        [ProducesResponseType(400)]
+        /// <param name="id">Role ID</param>
+        /// <returns>No content</returns>
+        [HttpDelete("{id}")]
+        [ProducesResponseType(204)]
         [ProducesResponseType(404)]
-        public IActionResult GetRoleByName(string roleName)
+        [ProducesResponseType(500)]
+        public async Task<IActionResult> DeleteRole(int id)
         {
-            if (!_roleRepository.RoleExistByName(roleName))
+            if (!await _roleRepository.RoleExistsByIdAsync(id))
                 return NotFound();
-            var Role = _mapper.Map<RoleDto>(_roleRepository.GetRoleByName(roleName));
 
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(Role);
-        }
-        /// <summary>
-        /// Get role order by id
-        /// </summary>
-        /// <returns>Roles</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderById")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<RoleDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetRolesOrderById()
-        {
-            var users = _mapper.Map<List<RoleDto>>(_roleRepository.GetRolesOrderById());
+            if (!await _roleRepository.DeleteRoleAsync(id))
+            {
+                ModelState.AddModelError("", "Failed to delete role");
+                return StatusCode(500, ModelState);
+            }
 
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get role order by name
-        /// </summary>
-        /// <returns>Roles</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByName")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<RoleDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetRolesOrderByName()
-        {
-            var users = _mapper.Map<List<RoleDto>>(_roleRepository.GetRolesOrderByName());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get role order descending by id
-        /// </summary>
-        /// <returns>Roles</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByIdDescending")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<RoleDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetRolesOrderByIdDescending()
-        {
-            var users = _mapper.Map<List<RoleDto>>(_roleRepository.GetRolesOrderByIdDescending());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get Role order descending by Name
-        /// </summary>
-        /// <returns>Roles</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByNameDescending")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<RoleDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUserOrderByNameDescending()
-        {
-            var users = _mapper.Map<List<RoleDto>>(_roleRepository.GetRolesOrderByNameDescending());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
+            return NoContent();
         }
     }
 }

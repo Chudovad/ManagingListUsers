@@ -12,419 +12,196 @@ namespace ManagingListUsers.Controllers
     {
         private readonly IUserRepository _userRepository;
         private readonly IMapper _mapper;
+        private const int DefaultPageSize = 10;
+        private const int MaxPageSize = 50;
 
         public UserController(IUserRepository userRepository, IMapper mapper)
         {
             _userRepository = userRepository;
             _mapper = mapper;
         }
+
         /// <summary>
-        /// Get all users
+        /// Get all users with pagination
         /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
+        /// <param name="page">Page number (starting from 1)</param>
+        /// <param name="pageSize">Number of items per page (max 50)</param>
+        /// <returns>Paginated list of users</returns>
         [HttpGet]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        public IActionResult GetUsers()
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsers());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get users by pagination
-        /// </summary>
-        /// <returns>Page of users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("Pagination/{page}/{pageSize}")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
+        [ProducesResponseType(200, Type = typeof(PaginatedResponse<UserDto>))]
         [ProducesResponseType(400)]
-        public IActionResult GetUsersByPagination(int page, int pageSize)
+        public async Task<IActionResult> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = DefaultPageSize)
         {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsersByPagination(page, pageSize));
+            if (page < 1 || pageSize < 1 || pageSize > MaxPageSize)
+                return BadRequest("Invalid pagination parameters");
 
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
+            var (users, totalCount) = await _userRepository.GetUsersPaginatedAsync(page, pageSize);
+
+            if (users == null || !users.Any())
+                return NotFound();
+
+            var response = new PaginatedResponse<UserDto>
+            {
+                Data = _mapper.Map<List<UserDto>>(users),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
+
+            return Ok(response);
         }
+
         /// <summary>
         /// Get user by id
         /// </summary>
-        /// <returns>User</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        /// <response code="404">Not found user</response>
-        [HttpGet("Id/{id}")]
+        /// <param name="id">User ID</param>
+        /// <returns>User information</returns>
+        [HttpGet("{id}")]
         [ProducesResponseType(200, Type = typeof(UserDto))]
-        [ProducesResponseType(400)]
         [ProducesResponseType(404)]
-        public IActionResult GetUserById(int id)
+        public async Task<IActionResult> GetUserById(int id)
         {
-            if (!_userRepository.UserExistsById(id))
+            if (!await _userRepository.UserExistsByIdAsync(id))
                 return NotFound();
-            var user = _mapper.Map<UserDto>(_userRepository.GetUserById(id));
 
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(user);
-        }
-        /// <summary>
-        /// Get user by name
-        /// </summary>
-        /// <returns>User</returns>        
-        /// <response code="200">Ok</response>
-        [HttpGet("Name/{name}")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUserByName(string name)
-        {
-            var user = _mapper.Map<List<UserDto>>(_userRepository.GetUserByName(name));
+            var user = await _userRepository.GetUserByIdAsync(id);
 
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(user);
+            return Ok(_mapper.Map<UserDto>(user));
         }
-        /// <summary>
-        /// Get user by age
-        /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("Age/{age}")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUserByAge(int age)
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUserByAge(age));
 
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
         /// <summary>
-        /// Get user by email
+        /// Get user roles
         /// </summary>
-        /// <returns>User</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        /// <response code="404">Not found user</response>
-        [HttpGet("Email/{email}")]
-        [ProducesResponseType(200, Type = typeof(UserDto))]
-        [ProducesResponseType(400)]
+        /// <param name="userId">User ID</param>
+        /// <returns>User with roles</returns>
+        [HttpGet("{userId}/roles")]
+        [ProducesResponseType(200, Type = typeof(UserWithRolesDto))]
         [ProducesResponseType(404)]
-        public IActionResult GetUserByAge(string email)
+        public async Task<IActionResult> GetUserWithRoles(int userId)
         {
-            if (!_userRepository.UserExistsByEmail(email))
+            if (!await _userRepository.UserExistsByIdAsync(userId))
                 return NotFound();
-            var users = _mapper.Map<UserDto>(_userRepository.GetUserByEmail(email));
 
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
+            var user = await _userRepository.GetUserWithRolesByIdAsync(userId);
+            return Ok(_mapper.Map<UserWithRolesDto>(user));
         }
-        /// <summary>
-        /// Get user order by id
-        /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderById")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        public IActionResult GetUsersOrderById()
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsersOrderById());
 
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
         /// <summary>
-        /// Get user order by Name
+        /// Create new user
         /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByName")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUsersOrderByName()
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsersOrderByName());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get user order by Age
-        /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByAge")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUsersOrderByAge()
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsersOrderByAge());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get user order by Email
-        /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByEmail")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUsersOrderByEmail()
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsersOrderByEmail());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get user order descending by id
-        /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByIdDescending")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUsersOrderByIdDescending()
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsersOrderByIdDescending());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get user order descending by Name
-        /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByNameDescending")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUsersOrderByNameDescending()
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsersOrderByNameDescending());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get user order descending by Age
-        /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByAgeDescending")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUsersOrderByAgeDescending()
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsersOrderByAgeDescending());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Get user order descending by Email
-        /// </summary>
-        /// <returns>Users</returns>
-        /// <response code="200">Ok</response>
-        /// <response code="400">Model invalid</response>
-        [HttpGet("OrderByEmailDescending")]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<UserDto>))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUsersOrderByEmailDescending()
-        {
-            var users = _mapper.Map<List<UserDto>>(_userRepository.GetUsersOrderByEmailDescending());
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <returns></returns>
-        [HttpGet("{userId}/Roles")]
-        [ProducesResponseType(200, Type = typeof(User))]
-        [ProducesResponseType(400)]
-        public IActionResult GetUserWithRoles(int userId)
-        {
-            if (!_userRepository.UserExistsById(userId))
-                return NotFound();
-            var users = _mapper.Map<User>(_userRepository.GetUserWithRolesById(userId));
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-            return Ok(users);
-        }
-        /// <summary>
-        /// Create user
-        /// </summary>
-        /// <remarks>
-        /// Name is required, Unique Email, Age must be between 1 and 120
-        /// </remarks>
-        /// <param name="userCreate">Model user</param>
-        /// <param name="roleId">Role id</param>
-        /// <returns>New user create</returns>
-        /// <response code="200">Successfully created</response>
-        /// <response code="400">Model invalid</response>
-        /// <response code="422">Email is not unique</response>
-        /// <response code="500">Something went wrong while saving</response>
+        /// <param name="userCreate">User data</param>
+        /// <param name="roleId">Initial role ID</param>
+        /// <returns>Created user</returns>
         [HttpPost]
-        [ProducesResponseType(200)]
+        [ProducesResponseType(201, Type = typeof(UserDto))]
+        [ProducesResponseType(400)]
         [ProducesResponseType(422)]
-        public IActionResult CreateUser([FromBody] UserDto userCreate, [FromQuery] int roleId)
+        public async Task<IActionResult> CreateUser([FromBody] UserDto userCreate, [FromQuery] int roleId)
         {
-            if (userCreate == null)
-                return BadRequest(ModelState);
-
-            if (!_userRepository.CheckUniqueEmail(userCreate.Email))
-            {
-                ModelState.AddModelError("", "Email is not unique");
-                return StatusCode(422, ModelState);
-            }
-
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var userMap = _mapper.Map<User>(userCreate);
-
-            if (!_userRepository.CreateUser(userMap, roleId))
+            if (!await _userRepository.CheckUniqueEmailAsync(userCreate.Email))
             {
-                ModelState.AddModelError("", "Something went wrong while saving");
+                ModelState.AddModelError("Email", "Email is already in use");
+                return UnprocessableEntity(ModelState);
+            }
+
+            var user = _mapper.Map<User>(userCreate);
+
+            if (!await _userRepository.CreateUserAsync(user, roleId))
+            {
+                ModelState.AddModelError("", "Failed to create user");
                 return StatusCode(500, ModelState);
             }
 
-            return Ok("Successfully created");
+            return CreatedAtAction(nameof(GetUserById), new { id = user.Id }, _mapper.Map<UserDto>(user));
         }
+
         /// <summary>
-        /// Update user by id
+        /// Update user
         /// </summary>
-        /// <remarks>
-        /// Name is required, Unique Email, Age must be between 1 and 120
-        /// </remarks>
-        /// <param name="userId">User id</param>
-        /// <param name="updatedUser">Model user</param>
-        /// <returns>User update</returns>
-        /// <response code="204">Successfully update</response>
-        /// <response code="400">Model invalid</response>
-        /// <response code="422">Email is not unique</response>
-        /// <response code="500">Something went wrong updating user</response>
-        [HttpPut("{userId}")]
-        [ProducesResponseType(400)]
+        /// <param name="id">User ID</param>
+        /// <param name="userUpdate">Updated user data</param>
+        /// <returns>No content</returns>
+        [HttpPut("{id}")]
         [ProducesResponseType(204)]
+        [ProducesResponseType(400)]
         [ProducesResponseType(404)]
-        public IActionResult UpdateUser(int userId, [FromBody] UserDto updatedUser)
+        [ProducesResponseType(422)]
+        public async Task<IActionResult> UpdateUser(int id, [FromBody] UserDto userUpdate)
         {
-            if (updatedUser == null)
+            if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            if (userId != updatedUser.Id)
-                return BadRequest(ModelState);
+            if (id != userUpdate.Id)
+                return BadRequest("ID mismatch");
 
-            if (!_userRepository.CheckUniqueEmail(updatedUser.Email))
-            {
-                ModelState.AddModelError("", "Email is not unique");
-                return StatusCode(422, ModelState);
-            }
-
-            if (!_userRepository.UserExistsById(userId))
+            if (!await _userRepository.UserExistsByIdAsync(id))
                 return NotFound();
 
-            if (!ModelState.IsValid)
-                return BadRequest();
-
-            var userMap = _mapper.Map<User>(updatedUser);
-
-            if (!_userRepository.UpdateUser(userMap))
+            if (!await _userRepository.CheckUniqueEmailAsync(userUpdate.Email))
             {
-                ModelState.AddModelError("", "Something went wrong updating user");
+                ModelState.AddModelError("Email", "Email is already in use");
+                return UnprocessableEntity(ModelState);
+            }
+
+            var user = _mapper.Map<User>(userUpdate);
+
+            if (!await _userRepository.UpdateUserAsync(user))
+            {
+                ModelState.AddModelError("", "Failed to update user");
                 return StatusCode(500, ModelState);
             }
 
             return NoContent();
         }
+
         /// <summary>
-        /// Delete user by id
+        /// Delete user
         /// </summary>
-        /// <param name="userId">User id</param>
-        /// <returns>User delete</returns>
-        /// <response code="204">User is delete</response>
-        /// <response code="400">Model invalid</response>
-        /// <response code="404">Not found user</response>
-        /// <response code="500">Something went wrong deleting user</response>
-        [HttpDelete("{userId}")]
+        /// <param name="id">User ID</param>
+        /// <returns>No content</returns>
+        [HttpDelete("{id}")]
         [ProducesResponseType(204)]
-        [ProducesResponseType(400)]
         [ProducesResponseType(404)]
-        public IActionResult DeleteUser(int userId)
+        [ProducesResponseType(500)]
+        public async Task<IActionResult> DeleteUser(int id)
         {
-            if (!_userRepository.UserExistsById(userId))
+            if (!await _userRepository.UserExistsByIdAsync(id))
                 return NotFound();
 
-            var userToDelete = _userRepository.GetUserById(userId);
-
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            if (!_userRepository.DeleteUser(userToDelete))
+            if (!await _userRepository.DeleteUserAsync(id))
             {
-                ModelState.AddModelError("", "Something went wrong deleting user");
+                ModelState.AddModelError("", "Failed to delete user");
                 return StatusCode(500, ModelState);
             }
 
             return NoContent();
         }
+
         /// <summary>
-        /// Add user role
+        /// Add role to user
         /// </summary>
-        /// <param name="userId">User id</param>
-        /// <param name="roleId">User id</param>
-        /// <returns>User role add</returns>
-        /// <response code="200">Successfully add</response>
-        /// <response code="400">Model invalid</response>
-        /// <response code="404">Not found user</response>
-        /// <response code="500">Something went wrong add role</response>
-        [HttpPost("AddUserRole")]
-        [ProducesResponseType(200)]
-        [ProducesResponseType(400)]
+        /// <param name="userId">User ID</param>
+        /// <param name="roleId">Role ID</param>
+        /// <returns>No content</returns>
+        [HttpPost("{userId}/roles/{roleId}")]
+        [ProducesResponseType(204)]
         [ProducesResponseType(404)]
-        public IActionResult AddUserRole([FromQuery] int userId, [FromQuery] int roleId)
+        [ProducesResponseType(500)]
+        public async Task<IActionResult> AddUserRole(int userId, int roleId)
         {
-            if (!_userRepository.UserExistsById(userId))
-                return NotFound();
+            if (!await _userRepository.UserExistsByIdAsync(userId))
+                return NotFound("User not found");
 
-            if (!ModelState.IsValid)
-                return BadRequest();
-
-            if (!_userRepository.AddUserRole(userId, roleId))
+            if (!await _userRepository.AddUserRoleAsync(userId, roleId))
             {
-                ModelState.AddModelError("", "Something went wrong add role");
+                ModelState.AddModelError("", "Failed to add role to user");
                 return StatusCode(500, ModelState);
             }
 
-            return Ok("Successfully add");
+            return NoContent();
         }
     }
 }

@@ -1,59 +1,87 @@
 ﻿using ManagingListUsers.Data;
 using ManagingListUsers.Interfaces;
 using ManagingListUsers.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace ManagingListUsers.Repository
 {
     public class RoleRepository : IRoleRepository
     {
-        public readonly ApplicationDbContext _context;
+        private readonly ApplicationDbContext _context;
+
         public RoleRepository(ApplicationDbContext context)
         {
             _context = context;
         }
-        public Role GetRoleById(int id)
+
+        public async Task<(IEnumerable<Role> Roles, int TotalCount)> GetRolesPaginatedAsync(
+            int page, int pageSize, string sortBy, bool descending)
         {
-            return _context.Roles.FirstOrDefault(r => r.Id == id);
+            var query = _context.Roles.AsQueryable();
+
+            query = (sortBy.ToLower(), descending) switch
+            {
+                ("name", false) => query.OrderBy(r => r.RoleName),
+                ("name", true) => query.OrderByDescending(r => r.RoleName),
+                (_, false) => query.OrderBy(r => r.Id),
+                (_, true) => query.OrderByDescending(r => r.Id)
+            };
+
+            var totalCount = await query.CountAsync();
+            var roles = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (roles, totalCount);
         }
 
-        public Role GetRoleByName(string roleName)
+        public async Task<Role> GetRoleByIdAsync(int id)
         {
-            return _context.Roles.FirstOrDefault(r => r.RoleName == roleName);
+            return await _context.Roles.FirstAsync(r => r.Id == id);
         }
 
-        public ICollection<Role> GetRolesOrderByName()
+        public async Task<bool> RoleExistsByIdAsync(int id)
         {
-            return _context.Roles.OrderBy(r => r.RoleName).ToList();
+            return await _context.Roles.AnyAsync(r => r.Id == id);
         }
 
-        public ICollection<Role> GetRolesOrderByNameDescending()
+        public async Task<bool> RoleExistsByNameAsync(string name)
         {
-            return _context.Roles.OrderByDescending(r => r.RoleName).ToList();
+            return await _context.Roles.AnyAsync(r => r.RoleName == name);
         }
 
-        public ICollection<Role> GetRoles()
+        public async Task<bool> RoleNameExistsForOtherRoleAsync(int roleId, string name)
         {
-            return _context.Roles.ToList();
+            return await _context.Roles
+                .AnyAsync(r => r.RoleName == name && r.Id != roleId);
         }
 
-        public ICollection<Role> GetRolesOrderById()
+        public async Task<bool> CreateRoleAsync(Role role)
         {
-            return _context.Roles.OrderBy(r => r.Id).ToList();
+            await _context.Roles.AddAsync(role);
+            return await SaveAsync();
         }
 
-        public ICollection<Role> GetRolesOrderByIdDescending()
+        public async Task<bool> UpdateRoleAsync(Role role)
         {
-            return _context.Roles.OrderByDescending(r => r.Id).ToList();
+            _context.Roles.Update(role);
+            return await SaveAsync();
         }
 
-        public bool RoleExistById(int id)
+        public async Task<bool> DeleteRoleAsync(int id)
         {
-            return _context.Roles.Any(r => r.Id == id);
+            var role = await _context.Roles.FindAsync(id);
+            if (role == null)
+                return false;
+
+            _context.Roles.Remove(role);
+            return await SaveAsync();
         }
 
-        public bool RoleExistByName(string roleName)
+        private async Task<bool> SaveAsync()
         {
-            return _context.Roles.Any(r => r.RoleName == roleName);
+            return await _context.SaveChangesAsync() > 0;
         }
     }
 }
