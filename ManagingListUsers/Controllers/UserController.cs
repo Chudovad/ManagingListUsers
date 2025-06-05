@@ -137,13 +137,18 @@ namespace ManagingListUsers.Controllers
             if (id != userUpdate.Id)
                 return BadRequest("ID mismatch");
 
-            if (!await _userRepository.UserExistsByIdAsync(id))
+            var exitingUser = await _userRepository.GetUserByIdAsync(id);
+
+            if (exitingUser == null)
                 return NotFound();
 
-            if (!await _userRepository.CheckUniqueEmailAsync(userUpdate.Email))
+            if (!exitingUser.Email.Contains(userUpdate.Email))
             {
-                ModelState.AddModelError("Email", "Email is already in use");
-                return UnprocessableEntity(ModelState);
+                if (!await _userRepository.CheckUniqueEmailAsync(userUpdate.Email))
+                {
+                    ModelState.AddModelError("Email", "Email is already in use");
+                    return UnprocessableEntity(ModelState);
+                }
             }
 
             var user = _mapper.Map<User>(userUpdate);

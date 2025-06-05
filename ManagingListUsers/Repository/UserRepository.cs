@@ -23,7 +23,11 @@ namespace ManagingListUsers.Repository
 
         public async Task<bool> UpdateUserAsync(User userUpdate)
         {
-            _context.Users.Update(userUpdate);
+            var existingUser = await GetUserByIdAsync(userUpdate.Id);
+            if (existingUser == null) return false;
+
+            _context.Entry(existingUser).CurrentValues.SetValues(userUpdate);
+
             return await Save();
         }
 
@@ -90,9 +94,9 @@ namespace ManagingListUsers.Repository
 
         public async Task<(ICollection<User> users, int totalCount)> GetUsersPaginatedAsync(int page, int pageSize)
         {
-            var users = await _context.Users.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            var users = await _context.Users.Skip((page - 1) * pageSize).Take(pageSize).OrderBy(u => u.Id).ToListAsync();
 
-            return (users, users.Count);
+            return (users, await _context.Users.CountAsync());
         }
     }
 }
