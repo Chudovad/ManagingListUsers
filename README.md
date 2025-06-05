@@ -1,4 +1,3 @@
 # ManagingListUsers
-1. Клонируем репозиторий
-2. Update-database в консоли диспетчера пакетов
-3. Запускаем приложение
+Пример Web API с пользователями их ролями.
+Стек: .NET 6, Swagger, AutoMapper, EF Core, MSSQL
