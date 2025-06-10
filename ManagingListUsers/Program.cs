@@ -18,8 +18,11 @@ namespace ManagingListUsers
             builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
             builder.Services.AddScoped<IUserRepository, UserRepository>();
             builder.Services.AddScoped<IRoleRepository, RoleRepository>();
-            string connString = builder.Configuration.GetConnectionString("DefaultConnection");
-            builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connString));
+            //string connString = builder.Configuration.GetConnectionString("DefaultConnection");
+            //builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connString));
+            builder.Services.AddDbContext<ApplicationDbContext>(options =>
+                options.UseNpgsql(builder.Configuration.GetConnectionString("PsqlConnection")));
+
             // Add services to the container.
 
             builder.Services.AddControllers();
