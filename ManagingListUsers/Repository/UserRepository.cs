@@ -46,7 +46,7 @@ namespace ManagingListUsers.Repository
 
         public async Task<bool> CheckUniqueEmailAsync(string email)
         {
-            var userEmail = await _context.Users.FirstOrDefaultAsync(c => c.Email.Trim().Equals(email.Trim(), StringComparison.OrdinalIgnoreCase));
+            var userEmail = await _context.Users.FirstOrDefaultAsync(c => c.Email.Trim().Equals(email.Trim()));
 
             return userEmail == null;
         }
